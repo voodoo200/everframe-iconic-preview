@@ -1,4 +1,4 @@
-const ICONIC_BUILD = "ICONIC-2026.10.27-01";
+const ICONIC_BUILD = "ICONIC-2026.10.27-02";
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 const $=id=>document.getElementById(id),cfg=window.ICONIC_CONFIG||{};
 const keys=['name','company','profession','city','country','contact','link','type','priority','status','next','amount','reason','notes'];
@@ -12,12 +12,12 @@ function initial(s){return (s||'И').trim().slice(0,1).toUpperCase()}
 function image(url,klass,letter){try{let u=new URL(url);if(u.protocol==='https:')return `<img class="${klass}" src="${safe(u.href)}" alt="" loading="lazy" referrerpolicy="no-referrer">`}catch{}return `<span class="${klass}">${safe(letter)}</span>`}
 function metric(label,num,symbol){return `<div class="metric"><span class="symbol">${symbol}</span><div class="num">${num}</div><small>${label}</small></div>`}
 function render(){
-const c=state.contacts,open=c.filter(x=>!['Сделка','Не подходит'].includes(x.status));
+const c=state.contacts,open=c.filter(x=>!['Сделка','Не подходит','Новый контакт'].includes(x.status));
 $('metrics').innerHTML=metric('Всего контактов',c.length,'♙')+metric('В работе',open.length,'♧')+metric('Запланированных действий',c.filter(x=>x.next).length,'▦')+metric('Сделок',c.filter(x=>x.status==='Сделка').length,'✓');
 let list=c.filter(x=>[x.name,x.company,x.profession,x.city,x.country,x.contact].join(' ').toLowerCase().includes($('search').value.toLowerCase().trim())).filter(x=>!$('statusFilter').value||x.status===$('statusFilter').value).filter(x=>!$('typeFilter').value||x.type===$('typeFilter').value).filter(x=>!$('priorityFilter').value||x.priority===$('priorityFilter').value);
 if(state.quick)list=list.filter(x=>x.status===state.quick);if(state.page==='tasks')list=list.filter(x=>x.next).sort((a,b)=>a.next.localeCompare(b.next));
-say('pageTitle',state.page==='tasks'?'Запланированные действия':state.page==='overview'?'Центр управления':state.page==='activity'?'Коммуникации':'Кандидаты');say('count',`${list.length} из ${c.length}`);
-$('content').innerHTML=list.length?list.map(x=>`<div class="personrow" data-contact="${safe(x.id)}">${image(x.photo_url,'mini-photo',initial(x.name))}<div class="personprimary"><b>${safe(x.name)}</b><small>${safe([x.profession,x.company].filter(Boolean).join(' · ')||'Контакт')}</small><div class="rowtags"><span>${safe(x.type||'Участник')}</span><span>Приоритет ${safe(x.priority||'B')}</span></div></div><div class="secondary"><small>⌖ ${safe([x.city,x.country].filter(Boolean).join(', ')||'География не указана')}</small></div><div class="secondary"><span class="chip ${x.status==='Сделка'?'green':x.status==='Новый контакт'?'blue':''}">${safe(x.status||'Новый контакт')}</span></div><span class="priority" title="Приоритет ${safe(x.priority||'B')}">★</span></div>`).join(''):'<div class="empty">Контактов по выбранным условиям нет</div>';
+say('pageTitle',state.page==='tasks'?'Запланированные действия':state.page==='overview'?'Центр управления':'Кандидаты');say('count',`${list.length} из ${c.length}`);
+$('content').innerHTML=list.length?list.map(x=>`<div class="personrow" data-contact="${safe(x.id)}">${image(x.photo_url,'mini-photo',initial(x.name))}<div class="personprimary"><b>${safe(x.name)}</b><small>${safe([x.profession,x.company].filter(Boolean).join(' · ')||'Контакт')}</small><div class="rowtags"><span>${safe(x.type||'Участник')}</span><span>Приоритет ${safe(x.priority||'B')}</span></div></div><div class="secondary"><small>⌖ ${safe([x.city,x.country].filter(Boolean).join(', ')||'География не указана')}</small></div><div class="secondary"><span class="chip ${x.status==='Сделка'?'green':x.status==='Новый контакт'?'blue':''}">${safe(x.status||'Новый контакт')}</span></div><span class="priority" title="Приоритет ${safe(x.priority||'B')}">★</span></div>`).join(''):'<div class="empty"><div class="empty-mark">✧</div><h3>Пока здесь тихо</h3><p>Добавьте первый контакт или измените параметры поиска.</p></div>';
 }
 async function reload(){
 const {data,error}=await state.db.from('contacts').select('*').eq('workspace_id',state.workspace).order('created_at',{ascending:false}).limit(1000);
@@ -95,7 +95,7 @@ if(!state.db)state.db=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{pe
 const {data:{user}}=await state.db.auth.getUser();if(!user)return;
 state.user=user;const {data:membership,error}=await state.db.from('workspace_members').select('workspace_id').eq('user_id',user.id).limit(1).maybeSingle();
 if(error||!membership){say('loginMessage','Нет доступа к рабочему пространству');return}
-state.workspace=membership.workspace_id;try{await reload();if(state.contacts.length&&window.matchMedia('(min-width:1100px)').matches)openDrawer(state.contacts[0].id);say('userEmail',user.email||'');say('initial',initial(user.email));$('login').classList.add('hidden')}catch(e){say('loginMessage','Ошибка базы: '+e.message)}
+state.workspace=membership.workspace_id;try{await reload();say('userEmail',user.email||'');say('initial',initial(user.email));$('login').classList.add('hidden')}catch(e){say('loginMessage','Ошибка базы: '+e.message)}
 }
 $('loginForm').onsubmit=async e=>{e.preventDefault();if(!state.db)return;say('loginMessage','Входим…');const {error}=await state.db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error){say('loginMessage',error.message);return}await init()};
 $('logout').onclick=async()=>{if(state.db)await state.db.auth.signOut();state.user=null;state.workspace=null;state.contacts=[];closeDrawer();$('login').classList.remove('hidden');say('loginMessage','Вы вышли из системы')};
