@@ -8,7 +8,7 @@ const say=(id,s)=>$(id).textContent=s;
 const fmt=d=>d?new Date(d).toLocaleString('ru-RU'):'';
 function msg(s){say('drawerMessage',s||'')}
 function initial(s){return (s||'И').trim().slice(0,1).toUpperCase()}
-function image(url,klass,letter){try{let u=new URL(url);if(u.protocol==='https:')return `<img class="${klass}" src="${safe(u.href)}" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'${klass}',textContent:'${safe(letter)}'}))">`}catch{}return `<span class="${klass}">${safe(letter)}</span>`}
+function image(url,klass,letter){try{let u=new URL(url);if(u.protocol==='https:')return `<img class="${klass}" src="${safe(u.href)}" alt="" loading="lazy" referrerpolicy="no-referrer">`}catch{}return `<span class="${klass}">${safe(letter)}</span>`}
 function metric(label,num,symbol){return `<div class="metric"><span class="symbol">${symbol}</span><div class="num">${num}</div><small>${label}</small></div>`}
 function render(){
 const c=state.contacts,open=c.filter(x=>!['Сделка','Не подходит'].includes(x.status));
@@ -20,10 +20,10 @@ $('content').innerHTML=list.length?list.map(x=>`<div class="personrow" data-cont
 }
 async function reload(){
 const {data,error}=await state.db.from('contacts').select('*').eq('workspace_id',state.workspace).order('created_at',{ascending:false}).limit(1000);
-if(error)throw error;state.contacts=data||[];render();
+if(error)throw error;state.contacts=data||[];render();if(state.selected&&!state.contacts.some(x=>x.id===state.selected))closeDrawer();
 }
-function openDrawer(id=null){state.selected=id;state.tab='details';$('drawer').classList.remove('hidden');$('drawerBackdrop').classList.remove('hidden');msg('');renderDrawer();}
-function closeDrawer(){$('drawer').classList.add('hidden');$('drawerBackdrop').classList.add('hidden');state.selected=null}
+function openDrawer(id=null){state.selected=id;state.tab='details';$('drawer').classList.remove('hidden');$('drawerBackdrop').classList.remove('hidden');document.body.classList.add('profile-open');msg('');renderDrawer();}
+function closeDrawer(){$('drawer').classList.add('hidden');$('drawerBackdrop').classList.add('hidden');document.body.classList.remove('profile-open');state.selected=null}
 const fields=[
 ['name','Имя / название','text'],['company','Компания / проект','text'],['profession','Профессия / сфера','text'],['city','Город','text'],['country','Страна','text'],['contact','Telegram / WhatsApp / email','text'],['link','Ссылка на профиль','url'],['photo_url','Ссылка на фото (HTTPS)','url'],['type','Категория','select',types],['priority','Приоритет','select',['A','B','C']],['status','Статус','select',statuses],['next','Следующее действие','date'],['amount','Сумма сделки, ₽','number'],['reason','Почему подходит','textarea'],['notes','Заметки','textarea']];
 function detailsForm(c){return `<form id="detailsForm"><div class="formgrid">${fields.map(([key,label,kind,options])=>`<label class="field ${['link','photo_url','reason','notes'].includes(key)?'wide':''}">${label}${kind==='select'?`<select name="${key}">${options.map(v=>`<option ${v===(c[key]|| (key==='type'?'Участник':key==='priority'?'B':'Новый контакт'))?'selected':''}>${safe(v)}</option>`).join('')}</select>`:kind==='textarea'?`<textarea name="${key}" rows="3">${safe(c[key]||'')}</textarea>`:`<input name="${key}" type="${kind}" value="${safe(c[key]??'')}" ${kind==='number'?'min="0" step="any"':''} ${key==='name'?'required maxlength="200"':''}>`}</label>`).join('')}</div><div class="actions">${state.selected?'<button type="button" id="deleteContact" class="outline">Удалить контакт</button>':''}<button type="submit" class="goldbtn">Сохранить контакт</button></div></form>`}
@@ -90,11 +90,11 @@ for(const x of statuses)$('statusFilter').insertAdjacentHTML('beforeend',`<optio
 for(const x of types)$('typeFilter').insertAdjacentHTML('beforeend',`<option>${safe(x)}</option>`);
 async function init(){
 if(!cfg.supabaseUrl?.startsWith('https://')||!cfg.supabaseAnonKey){say('loginMessage','Нужен config.js из существующего проекта (ключ anon/publishable).');return}
-state.db=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+if(!state.db)state.db=createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
 const {data:{user}}=await state.db.auth.getUser();if(!user)return;
 state.user=user;const {data:membership,error}=await state.db.from('workspace_members').select('workspace_id').eq('user_id',user.id).limit(1).maybeSingle();
 if(error||!membership){say('loginMessage','Нет доступа к рабочему пространству');return}
-state.workspace=membership.workspace_id;try{await reload();say('userEmail',user.email||'');say('initial',initial(user.email));$('login').classList.add('hidden')}catch(e){say('loginMessage','Ошибка базы: '+e.message)}
+state.workspace=membership.workspace_id;try{await reload();if(state.contacts.length&&window.matchMedia('(min-width:1100px)').matches)openDrawer(state.contacts[0].id);say('userEmail',user.email||'');say('initial',initial(user.email));$('login').classList.add('hidden')}catch(e){say('loginMessage','Ошибка базы: '+e.message)}
 }
 $('loginForm').onsubmit=async e=>{e.preventDefault();if(!state.db)return;say('loginMessage','Входим…');const {error}=await state.db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error){say('loginMessage',error.message);return}await init()};
 $('logout').onclick=async()=>{if(state.db)await state.db.auth.signOut();state.user=null;state.workspace=null;state.contacts=[];closeDrawer();$('login').classList.remove('hidden');say('loginMessage','Вы вышли из системы')};
