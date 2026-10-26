@@ -1,3 +1,4 @@
+const ICONIC_BUILD = "ICONIC-2026.10.27-01";
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 const $=id=>document.getElementById(id),cfg=window.ICONIC_CONFIG||{};
 const keys=['name','company','profession','city','country','contact','link','type','priority','status','next','amount','reason','notes'];
