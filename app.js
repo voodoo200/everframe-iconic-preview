@@ -2,7 +2,7 @@ import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
 const $=id=>document.getElementById(id),cfg=window.ICONIC_CONFIG||{};
 const keys=['name','company','profession','city','country','contact','link','type','priority','status','next','amount','reason','notes'];
 const types=['Участник','Спикер','Партнёр','Бренд'],statuses=['Новый контакт','Проверен','Написали','Ответил','Переговоры','Сделка','Не подходит'];
-const state={db:null,user:null,workspace:null,contacts:[],selected:null,page:'candidates',tab:'details',busy:false};
+const state={db:null,user:null,workspace:null,contacts:[],selected:null,page:'candidates',quick:'',tab:'details',busy:false};
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const say=(id,s)=>$(id).textContent=s;
 const fmt=d=>d?new Date(d).toLocaleString('ru-RU'):'';
@@ -12,11 +12,11 @@ function image(url,klass,letter){try{let u=new URL(url);if(u.protocol==='https:'
 function metric(label,num,symbol){return `<div class="metric"><span class="symbol">${symbol}</span><div class="num">${num}</div><small>${label}</small></div>`}
 function render(){
 const c=state.contacts,open=c.filter(x=>!['Сделка','Не подходит'].includes(x.status));
-$('metrics').innerHTML=metric('Всего контактов',c.length,'♙')+metric('В работе',open.length,'♧')+metric('Ближайших действий',c.filter(x=>x.next).length,'▦')+metric('Сделок',c.filter(x=>x.status==='Сделка').length,'✓');
+$('metrics').innerHTML=metric('Всего контактов',c.length,'♙')+metric('В работе',open.length,'♧')+metric('Запланированных действий',c.filter(x=>x.next).length,'▦')+metric('Сделок',c.filter(x=>x.status==='Сделка').length,'✓');
 let list=c.filter(x=>[x.name,x.company,x.profession,x.city,x.country,x.contact].join(' ').toLowerCase().includes($('search').value.toLowerCase().trim())).filter(x=>!$('statusFilter').value||x.status===$('statusFilter').value).filter(x=>!$('typeFilter').value||x.type===$('typeFilter').value).filter(x=>!$('priorityFilter').value||x.priority===$('priorityFilter').value);
-if(state.page==='tasks')list=list.filter(x=>x.next).sort((a,b)=>a.next.localeCompare(b.next));
-say('pageTitle',state.page==='tasks'?'Запланированные действия':state.page==='overview'?'Центр управления':'Кандидаты');say('count',`${list.length} из ${c.length}`);
-$('content').innerHTML=list.length?list.map(x=>`<div class="personrow" data-contact="${safe(x.id)}">${image(x.photo_url,'mini-photo',initial(x.name))}<div><b>${safe(x.name)}</b><small>${safe([x.profession,x.company].filter(Boolean).join(' · ')||'Контакт')}</small></div><div class="secondary"><small>⌖ ${safe([x.city,x.country].filter(Boolean).join(', ')||'География не указана')}</small></div><div class="secondary"><span class="chip ${x.status==='Сделка'?'green':x.status==='Новый контакт'?'blue':''}">${safe(x.status||'Новый контакт')}</span></div><span class="priority" title="Приоритет ${safe(x.priority||'B')}">★</span></div>`).join(''):'<div class="empty">Контактов по выбранным условиям нет</div>';
+if(state.quick)list=list.filter(x=>x.status===state.quick);if(state.page==='tasks')list=list.filter(x=>x.next).sort((a,b)=>a.next.localeCompare(b.next));
+say('pageTitle',state.page==='tasks'?'Запланированные действия':state.page==='overview'?'Центр управления':state.page==='activity'?'Коммуникации':'Кандидаты');say('count',`${list.length} из ${c.length}`);
+$('content').innerHTML=list.length?list.map(x=>`<div class="personrow" data-contact="${safe(x.id)}">${image(x.photo_url,'mini-photo',initial(x.name))}<div class="personprimary"><b>${safe(x.name)}</b><small>${safe([x.profession,x.company].filter(Boolean).join(' · ')||'Контакт')}</small><div class="rowtags"><span>${safe(x.type||'Участник')}</span><span>Приоритет ${safe(x.priority||'B')}</span></div></div><div class="secondary"><small>⌖ ${safe([x.city,x.country].filter(Boolean).join(', ')||'География не указана')}</small></div><div class="secondary"><span class="chip ${x.status==='Сделка'?'green':x.status==='Новый контакт'?'blue':''}">${safe(x.status||'Новый контакт')}</span></div><span class="priority" title="Приоритет ${safe(x.priority||'B')}">★</span></div>`).join(''):'<div class="empty">Контактов по выбранным условиям нет</div>';
 }
 async function reload(){
 const {data,error}=await state.db.from('contacts').select('*').eq('workspace_id',state.workspace).order('created_at',{ascending:false}).limit(1000);
@@ -28,6 +28,7 @@ const fields=[
 ['name','Имя / название','text'],['company','Компания / проект','text'],['profession','Профессия / сфера','text'],['city','Город','text'],['country','Страна','text'],['contact','Telegram / WhatsApp / email','text'],['link','Ссылка на профиль','url'],['photo_url','Ссылка на фото (HTTPS)','url'],['type','Категория','select',types],['priority','Приоритет','select',['A','B','C']],['status','Статус','select',statuses],['next','Следующее действие','date'],['amount','Сумма сделки, ₽','number'],['reason','Почему подходит','textarea'],['notes','Заметки','textarea']];
 function detailsForm(c){return `<form id="detailsForm"><div class="formgrid">${fields.map(([key,label,kind,options])=>`<label class="field ${['link','photo_url','reason','notes'].includes(key)?'wide':''}">${label}${kind==='select'?`<select name="${key}">${options.map(v=>`<option ${v===(c[key]|| (key==='type'?'Участник':key==='priority'?'B':'Новый контакт'))?'selected':''}>${safe(v)}</option>`).join('')}</select>`:kind==='textarea'?`<textarea name="${key}" rows="3">${safe(c[key]||'')}</textarea>`:`<input name="${key}" type="${kind}" value="${safe(c[key]??'')}" ${kind==='number'?'min="0" step="any"':''} ${key==='name'?'required maxlength="200"':''}>`}</label>`).join('')}</div><div class="actions">${state.selected?'<button type="button" id="deleteContact" class="outline">Удалить контакт</button>':''}<button type="submit" class="goldbtn">Сохранить контакт</button></div></form>`}
 function renderDrawer(){
+$('goHistory').disabled=!state.selected;$('goTasks').disabled=!state.selected;
 const c=state.contacts.find(x=>x.id===state.selected)||{};
 say('personName',c.name||'Новый контакт');say('personMeta',[c.company,c.profession].filter(Boolean).join(' · ')||'THE ICONIC');
 say('personStatus',c.status||'Новый контакт');$('portrait').outerHTML=image(c.photo_url,'portrait',initial(c.name)).replace('class="portrait"','id="portrait" class="portrait"');
@@ -75,8 +76,15 @@ $('drawerBody').addEventListener('click',e=>{if(e.target.id!=='deleteContact')re
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{if(!state.selected&&b.dataset.tab!=='details')return;state.tab=b.dataset.tab;msg('');renderDrawer()}));
 $('content').addEventListener('click',e=>{const row=e.target.closest('[data-contact]');if(row)openDrawer(row.dataset.contact)});
 $('newContact').onclick=()=>openDrawer();$('closeDrawer').onclick=closeDrawer;$('drawerBackdrop').onclick=closeDrawer;
-$('menuBtn').onclick=()=>document.querySelector('.sidebar').classList.toggle('show');
-document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));state.page=b.dataset.page;document.querySelector('.sidebar').classList.remove('show');render()});
+function setMenu(open){const isMobile=window.matchMedia('(max-width:650px)').matches;const active=Boolean(open&&isMobile);$('sidebar').classList.toggle('show',active);$('sideShade').classList.toggle('hidden',!active);$('menuBtn').setAttribute('aria-expanded',String(active));document.body.classList.toggle('menu-open',active)}
+$('menuBtn').onclick=()=>setMenu(!$('sidebar').classList.contains('show'));
+$('sideClose').onclick=()=>setMenu(false);
+$('sideShade').onclick=()=>setMenu(false);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
+window.addEventListener('resize',()=>{if(!window.matchMedia('(max-width:650px)').matches)setMenu(false)});
+document.querySelectorAll('[data-quick]').forEach(b=>b.onclick=()=>{state.quick=b.dataset.quick;document.querySelectorAll('[data-quick]').forEach(x=>x.classList.toggle('active',x===b));render()});
+$('goHistory').onclick=()=>{if(!state.selected)return;state.tab='history';renderDrawer()};$('goTasks').onclick=()=>{if(!state.selected)return;state.tab='tasks';renderDrawer()};
+document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));state.page=b.dataset.page;setMenu(false);render()});
 ['search','statusFilter','typeFilter','priorityFilter'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',render));
 for(const x of statuses)$('statusFilter').insertAdjacentHTML('beforeend',`<option>${safe(x)}</option>`);
 for(const x of types)$('typeFilter').insertAdjacentHTML('beforeend',`<option>${safe(x)}</option>`);
